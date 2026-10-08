@@ -1,0 +1,260 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Suivi de production</title>
+<style>
+:root{--bg:#eef1ee;--card:#fff;--ink:#1d2a22;--mut:#64736a;--ac:#2d5a3d;--ac2:#e3ede6;--warn:#b4531f;--line:#d5ddd7}
+@media(prefers-color-scheme:dark){:root{--bg:#141a16;--card:#1d2620;--ink:#e6eee8;--mut:#93a39a;--ac:#6fb585;--ac2:#25352b;--warn:#e0905a;--line:#33423a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,sans-serif;padding-bottom:90px}
+nav{position:sticky;top:0;z-index:5;display:flex;background:var(--ac);color:#fff}
+nav button{flex:1;padding:14px 2px;font-size:14px;background:none;border:0;color:#fff;font:inherit;opacity:.7;border-bottom:4px solid transparent}
+nav button.on{opacity:1;border-color:#fff;font-weight:600}
+main{max-width:900px;margin:auto;padding:10px}
+.bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+input,select,textarea,button{font:inherit;color:var(--ink)}
+input,select,textarea{padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--card);min-width:0}
+.bar input{flex:2 1 160px}.bar select{flex:1 1 110px}
+.btn{padding:12px 16px;border-radius:10px;border:1px solid var(--ac);background:var(--card);color:var(--ac);font-weight:600}
+.btn.p{background:var(--ac);color:#fff}.btn.s{padding:7px 10px;font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+.lot{display:flex;gap:10px;align-items:flex-start}.lot input{width:26px;height:26px;margin-top:2px;flex:none}
+.lot>div{flex:1;min-width:0}.mut{color:var(--mut);font-size:14px}
+.chip{display:inline-block;background:var(--ac2);color:var(--ac);border-radius:20px;padding:2px 9px;font-size:13px;margin:2px 4px 0 0}
+.chip.w{background:transparent;border:1px solid var(--warn);color:var(--warn)}
+.fab{position:fixed;left:0;right:0;bottom:0;padding:10px;background:var(--card);border-top:1px solid var(--line);display:flex;gap:8px;justify-content:center}
+dialog{border:0;border-radius:14px;padding:16px;width:min(560px,94vw);background:var(--card);color:var(--ink)}
+dialog::backdrop{background:#0008}dialog label{display:block;margin:10px 0 3px;font-weight:600}
+dialog input,dialog select,dialog textarea{width:100%}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:center}
+h2{margin:6px 0 10px;font-size:20px}details summary{cursor:pointer}
+.grid{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+.cell{min-height:46px;border-radius:8px;display:flex;align-items:center;gap:12px;padding:0 12px;color:#1d2a22;border:2px solid transparent;cursor:pointer}
+.cell .rn{min-width:40px;font-size:17px}.cell .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}.cell .ty{font-size:12px;opacity:.8;white-space:nowrap}
+.cell.empty{background:var(--line)!important;opacity:.45;color:var(--mut)}.cell.empty.sel,.cell.empty.foc{opacity:.85}
+.cell.ph{border:2px dashed var(--mut)}.cell.sel{border-color:var(--ac);outline:3px solid var(--ac)}.cell.foc{box-shadow:0 0 0 2px var(--ink)}
+.sheet{position:fixed;left:0;right:0;z-index:4;background:var(--card);border-top:2px solid var(--ac);box-shadow:0 -4px 12px #0003;max-height:40vh;overflow:auto;padding:10px 14px}.sheet .card{border:0;padding:0;margin:0;max-width:900px;margin:auto}
+[hidden]{display:none!important}.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:84px;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:20px;z-index:20;max-width:90vw;text-align:center}.card label{display:block;margin:8px 0 3px;font-weight:600}
+</style></head><body>
+<nav id="nav"></nav><main id="app"></main><div class="fab" id="fab" hidden></div><div class="sheet" id="info" hidden></div>
+<div class="toast" id="toast" hidden></div><dialog id="dlg"></dialog>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+const SEED=null, K='pepi_v2';
+const DEF=['Taille','Désherbage','Traitement','Fertilisation','Arrosage','Tuteurage','Arrachage','Binage'].map((n,i)=>({id:'t'+i,nom:n,actif:true}));
+let S=(()=>{try{const s=JSON.parse(localStorage.getItem(K));if(s&&s.lots)return s;
+ const old=JSON.parse(localStorage.getItem('pepi_v1'));if(old&&SEED){const B={...SEED,types:old.types,user:old.user,ops:[]};
+  for(const o of old.ops){const[p,r,v,f]=o.lot.split('|'),l=SEED.lots.find(l=>l.parcelle==p&&l.variete==v&&l.forme==f&&+r>=l.rang&&+r<=l.rangMax);if(l)B.ops.push({...o,lot:l.id})}return B}}catch(e){}return SEED||{lots:[],sizes:[],types:DEF,ops:[],user:''}})();
+S.utags=S.utags||{};S.um=S.um||{};S.del=S.del||{};S.lotsMaj=S.lotsMaj||0;if(SEED)S.lots.forEach(l=>{if(!l.rq){const s=SEED.lots.find(x=>x.id==l.id);if(s)l.rq=s.rq}});
+let V='lots',F={q:'',p:'',t:'',f:'',g:''},SEL=new Set();
+const $=s=>document.querySelector(s),uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const today=()=>new Date().toISOString().slice(0,10);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const save=()=>{try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}if(!busy&&GH().token){clearTimeout(tm);tm=setTimeout(ghSync,30000)}};
+const tn=id=>(S.types.find(t=>t.id==id)||{nom:'(supprimé)'}).nom;
+const PRS=[[1,'Haute'],[2,'Normale'],[3,'Basse']],prOpts=PRS.map(([v,n])=>`<option value="${v}" ${v==2?'selected':''}>${n}</option>`).join('');
+const odate=o=>o.statut=='fait'?fmtD(o.faitLe||o.date):(o.date?fmtD(o.date):'sans échéance');
+const prLbl=o=>o.statut=='a_faire'&&o.prio==1?' · Haute':o.statut=='a_faire'&&o.prio==3?' · Basse':'';
+function syncOp(){const f=$('#os').value=='fait',d=$('#od');$('#odl').textContent=f?'Date de réalisation':'Échéance (facultative)';$('#pw').hidden=f;
+ if(f&&!d.value){d.value=today();d.dataset.auto=1}else if(!f&&d.dataset.auto){d.value='';delete d.dataset.auto}}
+const opDate=()=>$('#od').value||($('#os').value=='fait'?today():'');
+function editOps(ids,post){const os=S.ops.filter(o=>ids.includes(o.id));if(!os.length)return;const td=os[0].statut=='a_faire',d0=td?os[0].date:(os[0].faitLe||os[0].date),p0=os[0].prio||2;$('#dlg').oninput=null;
+ $('#dlg').innerHTML=`<h2>Modifier · ${os.length} lot${os.length>1?'s':''}</h2><label>${td?'Échéance (vide = aucune)':'Date de réalisation'}</label><input type="date" id="ed" value="${esc(d0)}">${td?`<label>Priorité</label><select id="ep">${prOpts}</select>`:''}
+ <div class="row" style="margin-top:12px"><button class="btn" onclick="dlg.close()">Annuler</button><button class="btn p" id="esave">Enregistrer</button></div>`;
+ if(td)$('#ep').value=p0;$('#dlg').showModal();
+ $('#esave').onclick=()=>{const v=$('#ed').value,p=td?+$('#ep').value:0;os.forEach(o=>{o.maj=Date.now();if(td){if(v!==d0)o.date=v;if(p!==p0)o.prio=p}else if(v&&v!==d0){o.faitLe=v;o.date=v}});save();dlg.close();render();post&&post()}}
+const lotById=id=>S.lots.find(l=>l.id==id);
+const qty=l=>Object.values(l.tailles).reduce((a,b)=>a+b,0);
+const fmtD=d=>d?d.split('-').reverse().join('/'):'';
+function buildLots(rows){const sizes=Object.keys(rows[0]||{}).filter(k=>/^\d+\/\d+$|^\d+\+$/.test(k.trim()));
+ const m=new Map();for(const r of rows){const v=r.Variete||r['Variété'];if(!v)continue;const rg=+r.Rang,k=[r.Parcelle,v,r.Forme||'',rg].join('|');
+ let l=m.get(k);if(!l){l={variete:v,parcelle:String(r.Parcelle),rang:rg,rangMax:rg,forme:r.Forme||'',tailles:{},rq:{},tags:new Set(),com:new Set()};m.set(k,l)}
+ for(const s of sizes){const n=+r[s];if(n){l.tailles[s]=(l.tailles[s]||0)+n;l.rq[rg]=(l.rq[rg]||0)+n}}
+ String(r.Tags||'').split(',').forEach(t=>t.trim()&&l.tags.add(t.trim()));if(r.Commentaire)l.com.add(String(r.Commentaire).trim())}
+ const g={};for(const l of m.values()){const k=[l.parcelle,l.variete,l.forme].join('|');(g[k]=g[k]||[]).push(l)}
+ const out=[];for(const a of Object.values(g)){a.sort((x,y)=>x.rang-y.rang);let c=null;
+  for(const l of a){if(c&&l.rang-c.rangMax<=1){c.rangMax=l.rang;Object.assign(c.rq,l.rq);for(const s in l.tailles)c.tailles[s]=(c.tailles[s]||0)+l.tailles[s];l.tags.forEach(t=>c.tags.add(t));l.com.forEach(t=>c.com.add(t))}else{c=l;out.push(c)}}}
+ out.forEach(l=>{l.id=[l.parcelle,l.rang,l.variete,l.forme].join('|');l.tags=[...l.tags];l.com=[...l.com].join(' · ')});
+ return{sizes,lots:out}}
+const rg=l=>l.rangMax>l.rang?`rangs ${l.rang}–${l.rangMax}`:`rang ${l.rang}`;
+const rq=(l,r)=>l.rq?(l.rq[r]||0):qty(l)/(l.rangMax-l.rang+1);
+const rangQ=(p,r)=>Math.round(lotsAt(p,r).reduce((s,l)=>s+rq(l,r),0));
+const allTags=()=>[...new Set([...S.lots.flatMap(l=>l.tags),...Object.values(S.utags).flat()])].sort();
+const lotTags=l=>{const a=[...l.tags,...(S.utags['L|'+l.id]||[])];for(let r=l.rang;r<=l.rangMax;r++)a.push(...(S.utags['R|'+l.parcelle+'|'+r]||[]));return a};
+const uchips=(key,reopen)=>(S.utags[key]||[]).map((x,i)=>`<span class="chip">${esc(x)} <a data-rmtag="${esc(key)}" data-ti="${i}" ${reopen?`data-reopen="${esc(reopen)}"`:''}>×</a></span>`).join('');
+function tagForm(keys,pre,post){$('#dlg').oninput=null;$('#dlg').innerHTML=`<h2>Ajouter un tag · ${keys.length} élément${keys.length>1?'s':''}</h2><input id="ntag" list="tl" placeholder="ex : à surveiller" autocomplete="off" style="width:100%"><datalist id="tl">${allTags().map(x=>`<option value="${esc(x)}">`).join('')}</datalist>
+ <div class="row" style="margin-top:12px"><button class="btn" onclick="dlg.close()">Annuler</button><button class="btn p" id="tsave">Ajouter</button></div>`;$('#dlg').showModal();
+ $('#tsave').onclick=()=>{const v=$('#ntag').value.trim();if(!v)return;keys.forEach(k=>{const a=S.utags[k]=S.utags[k]||[];a.includes(v)||a.push(v);S.um[k]=Date.now()});pre&&pre();save();dlg.close();render();post&&post()}}
+function replaceLots(r){const old=S.lots.filter(l=>l.ph),drop=old.filter(l=>r.lots.some(x=>x.parcelle==l.parcelle));
+ S.ops=S.ops.flatMap(o=>{const p=drop.find(l=>l.id==o.lot);if(!p)return[o];S.del[o.id]=Date.now();const x=rngOf(o)||[p.rang,p.rangMax];return r.lots.filter(l=>l.parcelle==p.parcelle&&l.rang<=x[1]&&l.rangMax>=x[0]).map(l=>({...o,id:uid(),lot:l.id}))});
+ S.lots=r.lots.concat(old.filter(l=>!drop.includes(l)));S.sizes=r.sizes;S.lotsMaj=Date.now()}
+function parForm(){$('#dlg').oninput=null;$('#dlg').innerHTML=`<h2>Nouvelle parcelle</h2><label>Nom</label><input id="pn" autocomplete="off"><label>Nombre de rangs</label><input id="pr" type="number" inputmode="numeric" min="1" max="999">
+ <p class="mut">Les rangs sont créés « non détaillés » : ils ne sont pas considérés comme vides, mais n'ont ni variété ni quantité pour l'instant. Un réimport de l'inventaire les remplacera.</p><div class="row"><button class="btn" onclick="dlg.close()">Annuler</button><button class="btn p" id="psave">Créer</button></div>`;$('#dlg').showModal();
+ $('#psave').onclick=()=>{const n=$('#pn').value.trim(),k=Math.floor(+$('#pr').value);if(!n||!(k>=1&&k<=999))return alert('Indiquez un nom et un nombre de rangs entre 1 et 999.');
+  if(S.lots.some(l=>l.parcelle.toLowerCase()==n.toLowerCase()))return alert('Cette parcelle existe déjà.');
+  S.lots.push({id:'PH|'+n,variete:'(non détaillé)',parcelle:n,rang:1,rangMax:k,forme:'',tailles:{},rq:{},tags:[],com:'Rangs créés sans détail',ph:true});S.lotsMaj=Date.now();PP=n;PS.clear();PF=null;save();dlg.close();render()}}
+let SM='',tm=null,busy=false;
+const GH=()=>{try{return JSON.parse(localStorage.getItem('pepi_gh'))||{}}catch(e){return{}}};
+const mj=o=>o.maj||o.cree||0,pub=()=>{const{user,...d}=S;return d};
+const b64=s=>{const b=new TextEncoder().encode(s);let r='';for(let i=0;i<b.length;i+=8192)r+=String.fromCharCode(...b.subarray(i,i+8192));return btoa(r)};
+function toast(m){const e=$('#toast');e.textContent=m;e.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>e.hidden=true,3500)}
+function setMsg(m){SM=m;toast(m);if(V=='data')render()}
+function mergeData(R){
+ if(R.lots&&((R.lotsMaj||0)>(S.lotsMaj||0)||(!S.lots.length&&R.lots.length))){S.lots=R.lots;S.sizes=R.sizes||S.sizes;S.lotsMaj=R.lotsMaj||0}
+ S.del=Object.assign({},R.del,S.del);
+ const m=new Map();[...S.ops,...(R.ops||[])].forEach(o=>{const c=m.get(o.id);if(!c||mj(o)>mj(c))m.set(o.id,o)});S.ops=[...m.values()].filter(o=>!S.del[o.id]);
+ const tt=new Map();[...S.types,...(R.types||[])].forEach(x=>{const c=tt.get(x.id);if(!c||(x.maj||0)>(c.maj||0))tt.set(x.id,x)});S.types=[...tt.values()];
+ const ru=R.utags||{},rm=R.um||{};Object.keys(ru).forEach(k=>{if(!(k in S.utags)||(rm[k]||0)>(S.um[k]||0)){S.utags[k]=ru[k];S.um[k]=rm[k]||0}})}
+async function ghSync(){if(busy)return;const c=GH();if(!c.token||!c.repo)return setMsg("Renseignez d'abord le dépôt et le jeton.");
+ busy=true;clearTimeout(tm);const url=`https://api.github.com/repos/${c.repo}/contents/${c.path||'data.json'}`,h={Authorization:'Bearer '+c.token,Accept:'application/vnd.github+json'},q=c.branch?'?ref='+encodeURIComponent(c.branch):'';
+ const ok=()=>{c.last=Date.now();localStorage.setItem('pepi_gh',JSON.stringify(c));render();setMsg('Synchronisé ✓')};
+ try{for(let i=0;i<3;i++){const r=await fetch(url+q,{headers:h,cache:'no-store'});let sha,txt;
+  if(r.ok){const j=await r.json();sha=j.sha;txt=j.content?new TextDecoder().decode(Uint8Array.from(atob(j.content.replace(/\s/g,'')),ch=>ch.charCodeAt(0))):await(await fetch(url+q,{headers:{...h,Accept:'application/vnd.github.raw+json'},cache:'no-store'})).text();mergeData(JSON.parse(txt))}
+  else if(r.status!=404)throw new Error(r.status==401?'jeton refusé':'accès refusé ('+r.status+')');
+  try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}
+  const out=JSON.stringify(pub());if(txt===out)return ok();
+  const w=await fetch(url,{method:'PUT',headers:h,body:JSON.stringify({message:'Synchro '+(S.user||'appli')+' '+new Date().toISOString().slice(0,16),content:b64(out),sha,branch:c.branch||undefined})});
+  if(w.ok)return ok();if(w.status==409||w.status==422)continue;
+  throw new Error(w.status==401?'jeton refusé':w.status==404?'dépôt introuvable ou jeton sans droit en écriture':'écriture refusée ('+w.status+')')}
+  throw new Error('conflit répété, réessayez')}catch(e){busy=false;setMsg('Échec : '+(e.message=='Failed to fetch'?'pas de réseau':e.message))}finally{busy=false}}
+function filtered(){const q=F.q.toLowerCase();return S.lots.filter(l=>(!q||(l.variete+' '+l.parcelle+' '+rg(l)+' '+l.tags.join(' ')+' '+l.com).toLowerCase().includes(q))&&(!F.p||l.parcelle==F.p)&&(!F.f||l.forme==F.f)&&(!F.g||lotTags(l).includes(F.g))&&(!F.t||l.tailles[F.t]))
+ .sort((a,b)=>a.parcelle.localeCompare(b.parcelle)||a.rang-b.rang||a.variete.localeCompare(b.variete))}
+const pend=id=>S.ops.filter(o=>o.lot==id&&o.statut=='a_faire').length;
+const opts=(arr,cur,all)=>(all?`<option value="">${all}</option>`:'')+arr.map(x=>`<option ${x==cur?'selected':''}>${esc(x)}</option>`).join('');
+function render(){
+ $('#info').hidden=true;$('#app').style.paddingBottom='';
+ $('#nav').innerHTML=[['lots','Lots'],['plan','Plan'],['todo','À faire ('+new Set(S.ops.filter(o=>o.statut=='a_faire').map(o=>o.grp)).size+')'],['done','Faites'],['types','Types'],['data','Données']].map(([k,n])=>`<button class="${V==k?'on':''}" data-v="${k}">${n}</button>`).join('')+`<button data-a="sync" style="flex:0 0 46px;opacity:1;font-size:18px" title="Synchroniser">⟳</button>`;
+ ({lots:rLots,todo:()=>rOps('a_faire'),done:()=>rOps('fait'),types:rTypes,plan:rPlan,data:rData})[V]();
+}
+function rLots(){const L=filtered(),uniq=k=>[...new Set(S.lots.map(l=>l[k]))].sort();
+ const sz=S.sizes.filter(s=>S.lots.some(l=>l.tailles[s]));
+ $('#app').innerHTML=`<div class="bar"><input id="q" placeholder="Rechercher variété, rang, note…" value="${esc(F.q)}">
+ <select id="fp">${opts(uniq('parcelle'),F.p,'Parcelle')}</select><select id="ft">${opts(sz,F.t,'Taille')}</select><select id="ff">${opts(uniq('forme'),F.f,'Forme')}</select><select id="fg">${opts(allTags(),F.g,'Tag')}</select></div>
+ <div class="row mut" style="margin-bottom:8px"><span>${L.length} lots · ${L.reduce((a,l)=>a+qty(l),0)} plants</span><button class="btn s" data-a="selall">Tout sélectionner</button></div>`+
+ (S.lots.length?'':'<div class="card">Aucun lot. Allez dans « Données » pour synchroniser avec GitHub ou importer votre inventaire.</div>')+
+ L.slice(0,300).map(l=>{const p=pend(l.id),n=S.ops.filter(o=>o.lot==l.id&&o.statut=='fait').length;
+ return `<div class="card lot"><input type="checkbox" data-sel="${esc(l.id)}" ${SEL.has(l.id)?'checked':''}><div data-open="${esc(l.id)}">
+ <b>${esc(l.variete)}</b><div class="mut">${esc(l.parcelle)} · ${rg(l)}${l.forme?' · '+esc(l.forme):''}</div>
+ <div>${S.sizes.filter(s=>l.tailles[s]).map(s=>`<span class="chip">${s} × ${l.tailles[s]}</span>`).join('')}${(S.utags['L|'+l.id]||[]).map(x=>`<span class="chip">#${esc(x)}</span>`).join('')}${p?`<span class="chip w">${p} à faire</span>`:''}${n?`<span class="chip">${n} fait${n>1?'s':''}</span>`:''}</div></div></div>`}).join('')+
+ (L.length>300?`<div class="mut">Affichage limité à 300 lots, affinez les filtres.</div>`:'');
+ const f=$('#fab');f.hidden=!SEL.size;f.innerHTML=`<button class="btn" data-a="clear">Vider</button><button class="btn" data-a="tagsel">Tag</button><button class="btn p" data-a="newop">Opération sur ${SEL.size} lot${SEL.size>1?'s':''}</button>`;}
+let FT='';
+function rOps(st){$('#fab').hidden=true;const td=st=='a_faire',g={},dt=o=>td?o.date:(o.faitLe||o.date);
+ S.ops.filter(o=>o.statut==st&&(!FT||o.type==FT)).forEach(o=>(g[o.grp]=g[o.grp]||[]).push(o));
+ const gd=a=>td?(a.map(o=>o.date).filter(Boolean).sort()[0]||''):dt(a[0]),gp=a=>Math.min(...a.map(o=>o.prio||2));
+ const gs=Object.values(g).sort((a,b)=>td?(gp(a)-gp(b))||(gd(a)&&gd(b)?gd(a).localeCompare(gd(b)):gd(a)?-1:gd(b)?1:0):gd(b).localeCompare(gd(a)));
+ const rl=o=>o.rangs?' · rang'+(o.rangs.includes('–')?'s ':' ')+o.rangs:'';
+ $('#app').innerHTML=`<h2>${td?'À faire':'Opérations effectuées'}</h2><div class="bar"><select id="fty"><option value="">Tous les types</option>${S.types.map(t=>`<option value="${t.id}" ${t.id==FT?'selected':''}>${esc(t.nom)}</option>`).join('')}</select></div>`+
+ (gs.length?gs.map(a=>{const o=a[0],d=gd(a),late=td&&d&&d<today(),p=gp(a);return `<div class="card"><div class="row"><div><b>${esc(tn(o.type))}</b> ${td&&p!=2?`<span class="chip ${p==1?'w':''}">${p==1?'Haute':'Basse'}</span>`:''}· <span style="${late?'color:var(--warn);font-weight:600':''}">${d?fmtD(d):'Sans échéance'}${late?' (en retard)':''}</span><div class="mut">${a.length} lot${a.length>1?'s':''}${rl(o)}${td?'':o.par?' · '+esc(o.par):''}${o.note?' · '+esc(o.note):''}</div></div>
+ <span><button class="btn s" data-edit="${a.map(x=>x.id).join(',')}">Modifier</button> ${td?`<button class="btn s" data-done-grp="${o.grp}">Tout fait</button>`:`<button class="btn s" data-undo-grp="${o.grp}">Remettre à faire</button>`}</span></div>
+ <details><summary class="mut">Voir les lots</summary>${a.map(x=>{const l=lotById(x.lot)||{};return `<div class="row" style="padding:6px 0"><span>${esc(l.variete)} <span class="mut">${esc(l.parcelle)} · ${l.rang?rg(l):''}${' · '+(td?(x.date?fmtD(x.date):'sans échéance')+prLbl(x):fmtD(dt(x)))}</span></span><span><button class="btn s" data-edit="${x.id}">Modifier</button> ${td?`<button class="btn s" data-done="${x.id}">Fait</button>`:`<button class="btn s" data-undo="${x.id}">Annuler</button>`}</span></div>`}).join('')}</details></div>`}).join(''):`<div class="card mut">${td?'Rien à faire pour le moment.':'Aucune opération effectuée.'}</div>`);}
+let PP='',PM='qty',PT='',PS=new Set(),PF=null;
+const hue=s=>{let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))%360;return h};
+const rngOf=o=>{if(!o.rangs)return null;const m=o.rangs.split('–');return[+m[0],+m[m.length-1]]};
+const lotsAt=(p,r)=>S.lots.filter(l=>l.parcelle==p&&l.rang<=r&&l.rangMax>=r);
+const opsAt=(p,r)=>lotsAt(p,r).flatMap(l=>S.ops.filter(o=>o.lot==l.id&&(x=>!x||(r>=x[0]&&r<=x[1]))(rngOf(o))));
+function rPlan(){const ps=[...new Set(S.lots.map(l=>l.parcelle))].sort();if(!ps.includes(PP))PP=ps[0]||'';
+ const pl=S.lots.filter(l=>l.parcelle==PP),mn=Math.min(...pl.map(l=>l.rang)),mx=Math.max(...pl.map(l=>l.rangMax)),rs=pl.length?Array.from({length:mx+30},(_,i)=>i+1):[];
+ const QM=Math.max(1,...rs.map(r=>rangQ(PP,r)));
+ const cell=r=>{const ls=lotsAt(PP,r).sort((a,b)=>qty(b)-qty(a));if(!ls.length)return `<div class="cell empty ${PS.has(r)?'sel':''} ${PF===r?'foc':''}" data-rang="${r}"><b class="rn">${r}</b><span class="nm">vide</span>${(S.utags['R|'+PP+'|'+r]||[]).map(x=>`<span class="chip" style="margin:0">#${esc(x)}</span>`).join('')}</div>`;
+  const q=rangQ(PP,r),st=PM=='todo'?'a_faire':'fait',os=opsAt(PP,r).filter(o=>(!PT||o.type==PT)&&o.statut==st);let bg='var(--ac2)';
+  if(PM=='qty')bg=`hsl(140 45% ${93-42*q/QM}%)`;else if(PM=='var')bg=`hsl(${hue(ls[0].variete)} 45% 78%)`;else if(os.length)bg=PM=='todo'?'#f0b27a':'#9fd0ab';
+  const ty=PM=='qty'?(ls.every(l=>l.ph)?'':q+' pl.'):PM=='var'?'':[...new Set(os.map(o=>tn(o.type)))].join(', ');
+  const tg=[...new Set([...(S.utags['R|'+PP+'|'+r]||[]),...ls.flatMap(l=>S.utags['L|'+l.id]||[])])];
+  return `<div class="cell ${PS.has(r)?'sel':''} ${PF===r?'foc':''} ${ls.every(l=>l.ph)?'ph':''}" data-rang="${r}" style="background:${bg}"><b class="rn">${r}</b><span class="nm">${ls.map(l=>esc(l.variete)).join(' · ')}</span>${tg.map(x=>`<span class="chip" style="margin:0">#${esc(x)}</span>`).join('')}${ty?`<span class="ty">${esc(ty)}</span>`:''}</div>`};
+ let info='';if(PF!=null){const ls=lotsAt(PP,PF),os=opsAt(PP,PF).sort((a,b)=>(b.faitLe||b.date).localeCompare(a.faitLe||a.date));
+  info=`<div class="card"><div class="row"><span><b>${esc(PP)} · rang ${PF}</b> · ${rangQ(PP,PF)} plants</span><button class="btn s" data-a="pclose">Fermer</button></div><div>${uchips('R|'+PP+'|'+PF)}<button class="btn s" data-tagone="${esc('R|'+PP+'|'+PF)}">+ Tag rang</button></div>${ls.length?'':'<div class="mut">Rang vide : seuls les tags sont possibles.</div>'}${ls.map(l=>`<div class="mut">${esc(l.variete)} ${esc(l.forme)} · ${rg(l)} · ${l.ph?'non détaillé':qty(l)+' plants'}</div>`).join('')}
+  <h3>Opérations</h3>${os.length?os.map(o=>`<div class="row" style="padding:5px 0;border-top:1px solid var(--line)"><span>${o.statut=='fait'?'✓':'○'} <b>${esc(tn(o.type))}</b> ${odate(o)}${prLbl(o)}<div class="mut">${esc((lotById(o.lot)||{}).variete)} ${esc(o.note||'')}</div></span><span><button class="btn s" data-edit="${o.id}">Modifier</button> ${o.statut=='a_faire'?`<button class="btn s" data-done="${o.id}">Fait</button>`:''}</span></div>`).join(''):'<p class="mut">Aucune opération.</p>'}</div>`}
+ $('#app').innerHTML=`<div class="bar"><select id="pp">${opts(ps,PP)}</select><select id="pm"><option value="qty" ${PM=='qty'?'selected':''}>Couleur : nb de plants</option><option value="var" ${PM=='var'?'selected':''}>Couleur : variétés</option><option value="todo" ${PM=='todo'?'selected':''}>Couleur : à faire</option><option value="fait" ${PM=='fait'?'selected':''}>Couleur : fait</option></select>
+ <select id="pt"><option value="">Tous types</option>${S.types.map(x=>`<option value="${x.id}" ${x.id==PT?'selected':''}>${esc(x.nom)}</option>`).join('')}</select><button class="btn s" data-a="newpar">+ Parcelle</button>${pl.length&&pl.every(l=>l.ph)?'<button class="btn s" data-a="delpar">Supprimer</button>':''}</div>
+ <div class="mut">${rs.filter(r=>lotsAt(PP,r).length).length} rangs non vides sur ${rs.length} · touchez un rang pour le sélectionner et voir son détail. Plus la couleur est foncée, plus le rang compte de plants (max ${QM}). Rangs vides grisés, rangs pointillés : non détaillés.</div><div class="grid">${rs.map(cell).join('')}</div>`;
+ const f=$('#fab');f.hidden=!PS.size;f.innerHTML=`<button class="btn" data-a="pclear">Vider</button><button class="btn" data-a="ptag">Tag</button><button class="btn p" data-a="pop">Opération sur ${PS.size} rang${PS.size>1?'s':''}</button>`;
+ const sh=$('#info');sh.hidden=PF==null;if(PF!=null){sh.innerHTML=info;sh.style.bottom=(f.hidden?0:f.offsetHeight)+'px';$('#app').style.paddingBottom='45vh'}}
+function planOp(){const rs=[...PS].sort((a,b)=>a-b),runs=[];for(const r of rs){const c=runs[runs.length-1];c&&r-c[1]==1?c[1]=r:runs.push([r,r])}
+ $('#dlg').oninput=null;$('#dlg').innerHTML=`<h2>Opération · ${esc(PP)} · rang${rs.length>1?'s ':' '}${runs.map(c=>c[0]==c[1]?c[0]:c[0]+'–'+c[1]).join(', ')}</h2>`+opFields();$('#dlg').showModal();
+ $('#osave').onclick=()=>{const grp=uid(),n0=S.ops.length;runs.forEach(([a,b])=>{const lab=a==b?''+a:a+'–'+b;S.lots.filter(l=>l.parcelle==PP&&l.rang<=b&&l.rangMax>=a).forEach(l=>S.ops.push({id:uid(),grp,lot:l.id,type:$('#ot').value,date:opDate(),prio:+$('#opr').value,statut:$('#os').value,note:$('#on').value,par:S.user,rangs:lab,cree:Date.now(),maj:Date.now()}))});if(S.ops.length==n0)return alert('Aucun lot sur les rangs sélectionnés : une opération doit être rattachée à un lot. Utilisez un tag pour les rangs vides.');PS.clear();save();dlg.close();render()}}
+function rTypes(){$('#fab').hidden=true;$('#app').innerHTML=`<h2>Types d'opérations</h2><div class="bar"><input id="nt" placeholder="Nouveau type (ex : Pincement)"><button class="btn p" data-a="addtype">Ajouter</button></div>`+
+ S.types.map(t=>`<div class="card row"><span style="${t.actif?'':'opacity:.5'}">${esc(t.nom)}</span><span><button class="btn s" data-ren="${t.id}">Renommer</button> <button class="btn s" data-tog="${t.id}">${t.actif?'Désactiver':'Réactiver'}</button></span></div>`).join('')+'<p class="mut">Un type désactivé n\'apparaît plus dans les formulaires mais reste visible dans l\'historique.</p>';}
+function rData(){const c=GH();$('#fab').hidden=true;$('#app').innerHTML=`<h2>Données</h2>
+ <div class="card"><label>Votre prénom (indiqué sur chaque opération)</label><input id="usr" value="${esc(S.user)}" style="width:100%"></div>
+ <div class="card"><b>Synchronisation GitHub</b><p class="mut">Les données vont dans un dépôt <u>privé</u>, jamais dans l'appli publique. Créez un jeton « fine-grained » limité à ce seul dépôt, avec la permission Contents : lecture et écriture. Il reste stocké sur cet appareil.</p>
+ <label>Dépôt privé (propriétaire/nom)</label><input id="gr" value="${esc(c.repo||'')}" placeholder="monnom/pepiniere-donnees" style="width:100%"><label>Fichier</label><input id="gp" value="${esc(c.path||'data.json')}" style="width:100%">
+ <label>Branche (facultatif)</label><input id="gb" value="${esc(c.branch||'')}" style="width:100%"><label>Jeton d'accès</label><input id="gt" type="password" value="${esc(c.token||'')}" autocomplete="off" style="width:100%">
+ <p><button class="btn" data-a="gsave">Enregistrer</button> <button class="btn p" data-a="sync">Synchroniser</button></p><div class="mut">${esc(SM)}${c.last?' · dernière synchro : '+new Date(c.last).toLocaleString('fr-FR'):''}</div></div>
+ <div class="card"><b>Importer l'inventaire</b><p class="mut">Fichier Excel ou CSV avec les colonnes Variete, Parcelle, Rang, Forme, Tags, Commentaire et une colonne par taille. Remplace les lots, conserve l'historique.</p><input type="file" id="fx" accept=".xlsx,.xls,.csv"></div>
+ <div class="card"><b>Importer des opérations déjà effectuées</b><p class="mut">Fichier Excel ou CSV : Date, Type, Parcelle, Rang début, Rang fin, Variété (facultatif), Fait par, Note. Chaque ligne est rattachée aux lots de la parcelle sur ces rangs. Les doublons sont ignorés.</p>
+ <input type="file" id="fo" accept=".xlsx,.xls,.csv"><p><button class="btn s" data-a="modele">Télécharger un modèle CSV</button></p></div>
+ <div class="card"><b>Sauvegarde et partage</b><p class="mut">${S.lots.length} lots · ${S.ops.length} opérations. L'import fusionne sans écraser.</p>
+ <button class="btn" data-a="expjson">Exporter (JSON)</button> <button class="btn" data-a="expcsv">Historique (CSV)</button><p><input type="file" id="fj" accept=".json"></p></div>`;}
+const norm=s=>String(s??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+async function readWb(f){const o={cellDates:true};return /\.csv$/i.test(f.name)?XLSX.read(await f.text(),{...o,type:'string'}):XLSX.read(await f.arrayBuffer(),o)}
+function pDate(v){if(v instanceof Date)return new Date(v.getTime()+12*36e5).toISOString().slice(0,10);const s=String(v??'').trim();
+ let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+ m=s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})/);if(m)return`${m[3].length==2?'20'+m[3]:m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;return''}
+function importOps(rows){const get=(r,...ks)=>{for(const k in r)if(ks.includes(norm(k))&&r[k]!=null&&r[k]!=='')return r[k]};
+ const add=[],bad=[],ex=new Set(S.ops.filter(o=>o.statut=='fait').map(o=>[o.lot,o.type,o.date].join('|'))),nt=[];
+ rows.forEach((r,i)=>{const d=pDate(get(r,'date')),tp=String(get(r,'type','operation')||'').trim(),p=get(r,'parcelle'),v=get(r,'variete');
+  const a=+get(r,'rang debut','rang de','rang','du rang')||0,b=+get(r,'rang fin','rang a','au rang')||a;
+  if(!d||!tp||(!p&&!v)){bad.push(i+2);return}
+  const lots=S.lots.filter(l=>(!p||norm(l.parcelle)==norm(p))&&(!v||norm(l.variete).includes(norm(v)))&&(!a||(l.rang<=Math.max(a,b)&&l.rangMax>=Math.min(a,b))));
+  if(!lots.length){bad.push(i+2);return}
+  let ty=S.types.find(x=>norm(x.nom)==norm(tp))||nt.find(x=>norm(x.nom)==norm(tp));if(!ty){ty={id:uid(),nom:tp,actif:true};nt.push(ty)}
+  const grp=uid(),rl=a?(a==b?''+a:Math.min(a,b)+'–'+Math.max(a,b)):'';
+  lots.forEach(l=>{const k=[l.id,ty.id,d].join('|');if(ex.has(k))return;ex.add(k);add.push({id:uid(),grp,lot:l.id,type:ty.id,date:d,statut:'fait',note:String(get(r,'note','commentaire')||''),par:String(get(r,'fait par','par','qui')||''),rangs:rl,cree:Date.now(),maj:Date.now()})})});
+ if(!add.length)return alert('Aucune opération importable.'+(bad.length?' Lignes non reconnues : '+bad.slice(0,10).join(', '):''));
+ if(confirm(add.length+' opérations à importer'+(nt.length?' ('+nt.length+' nouveau(x) type(s) : '+nt.map(x=>x.nom).join(', ')+')':'')+(bad.length?'\n'+bad.length+' ligne(s) ignorée(s) (aucun lot trouvé), ex. lignes '+bad.slice(0,8).join(', '):'')+'\nImporter ?')){S.types.push(...nt);S.ops.push(...add);save();render()}}
+function dl(name,txt,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type}));a.download=name;a.click()}
+function openLot(id){const l=lotById(id),o=S.ops.filter(x=>x.lot==id).sort((a,b)=>b.date.localeCompare(a.date));
+ $('#dlg').innerHTML=`<h2>${esc(l.variete)}</h2><div class="mut">${esc(l.parcelle)} · ${rg(l)} ${esc(l.forme)}</div>
+ <div>${S.sizes.filter(s=>l.tailles[s]).map(s=>`<span class="chip">${s} × ${l.tailles[s]}</span>`).join('')}${l.tags.map(t=>`<span class="chip w">${esc(t)}</span>`).join('')}${uchips('L|'+id,id)}<button class="btn s" data-tagone="${esc('L|'+id)}" data-reopen="${esc(id)}">+ Tag</button></div>${l.com?`<p>${esc(l.com)}</p>`:''}
+ <h3>Historique</h3>${o.length?o.map(x=>`<div class="row" style="padding:5px 0;border-top:1px solid var(--line)"><span>${x.statut=='fait'?'✓':'○'} <b>${esc(tn(x.type))}</b> ${odate(x)}${prLbl(x)}<div class="mut">${esc(x.par||'')} ${x.rangs?'· rang'+(x.rangs.includes('–')?'s ':' ')+x.rangs+' ':''}${esc(x.note||'')}</div></span><span><button class="btn s" data-edit="${x.id}" data-reopen="${esc(id)}">Modifier</button> ${x.statut=='a_faire'?`<button class="btn s" data-done="${x.id}" data-reopen="${id}">Fait</button> `:''}<button class="btn s" data-del="${x.id}" data-reopen="${id}">×</button></span></div>`).join(''):'<p class="mut">Aucune opération.</p>'}
+ <div class="row" style="margin-top:12px"><button class="btn" onclick="dlg.close()">Fermer</button><button class="btn p" data-addone="${esc(id)}">+ Opération</button></div>`;$('#dlg').showModal();}
+const opFields=()=>`<label>Type</label><select id="ot">${S.types.filter(t=>t.actif).map(t=>`<option value="${t.id}">${esc(t.nom)}</option>`).join('')}</select>
+ <label>Statut</label><select id="os" onchange="syncOp()"><option value="a_faire">À faire</option><option value="fait">Déjà fait</option></select><label id="odl">Échéance (facultative)</label><input type="date" id="od"><div id="pw"><label>Priorité</label><select id="opr">${prOpts}</select></div>
+ <label>Note</label><textarea id="on" rows="2"></textarea><div class="row" style="margin-top:12px"><button class="btn" onclick="dlg.close()">Annuler</button><button class="btn p" id="osave">Enregistrer</button></div>`;
+function addOps(ids,rangs){const grp=uid();ids.forEach(l=>S.ops.push({id:uid(),grp,lot:l,type:$('#ot').value,date:opDate(),prio:+$('#opr').value,statut:$('#os').value,note:$('#on').value,par:S.user,rangs:rangs||'',cree:Date.now(),maj:Date.now()}));
+ SEL.clear();save();dlg.close();render()}
+function opForm(ids){$('#dlg').oninput=null;$('#dlg').innerHTML=`<h2>Nouvelle opération · ${ids.length} lot${ids.length>1?'s':''}</h2>`+opFields();$('#dlg').showModal();$('#osave').onclick=()=>addOps(ids)}
+function done(o){o.statut='fait';o.faitLe=today();o.par=S.user||o.par;o.maj=Date.now()}
+document.addEventListener('click',e=>{const d=e.target.closest('[data-v],[data-a],[data-open],[data-done],[data-done-grp],[data-undo],[data-undo-grp],[data-rang],[data-rmtag],[data-tagone],[data-edit],[data-del],[data-ren],[data-tog],[data-addone]');if(!d)return;const D=d.dataset;
+ if(D.v){V=D.v;render()}
+ else if(D.open)openLot(D.open);
+ else if(D.rang){const r=+D.rang;PS.has(r)?PS.delete(r):PS.add(r);PF=r;render()}
+ else if(D.a=='pclear'){PS.clear();render()}
+ else if(D.a=='pclose'){PF=null;render()}
+ else if(D.a=='newpar')parForm();
+ else if(D.a=='gsave'){const c=GH();Object.assign(c,{repo:$('#gr').value.trim(),path:$('#gp').value.trim()||'data.json',branch:$('#gb').value.trim(),token:$('#gt').value.trim()});localStorage.setItem('pepi_gh',JSON.stringify(c));setMsg('Réglages enregistrés.')}
+ else if(D.a=='sync'){GH().token?ghSync():(V='data',render())}
+ else if(D.a=='delpar'){if(confirm('Supprimer la parcelle '+PP+' et ses opérations ?')){const ids=S.lots.filter(l=>l.parcelle==PP).map(l=>l.id);S.lots=S.lots.filter(l=>l.parcelle!=PP);S.lotsMaj=Date.now();S.ops.filter(o=>ids.includes(o.lot)).forEach(o=>S.del[o.id]=Date.now());S.ops=S.ops.filter(o=>!ids.includes(o.lot));Object.keys(S.utags).filter(k=>k.startsWith('R|'+PP+'|')||(k.startsWith('L|')&&ids.includes(k.slice(2)))).forEach(k=>{S.utags[k]=[];S.um[k]=Date.now()});PS.clear();PF=null;save();render()}}
+ else if(D.a=='pop')planOp();
+ else if(D.a=='ptag')tagForm([...PS].map(r=>'R|'+PP+'|'+r),()=>PS.clear());
+ else if(D.a=='tagsel')tagForm([...SEL].map(i=>'L|'+i),()=>SEL.clear());
+ else if(D.tagone)tagForm([D.tagone],null,D.reopen?()=>openLot(D.reopen):null);
+ else if(D.rmtag){const a=S.utags[D.rmtag];a.splice(+D.ti,1);S.um[D.rmtag]=Date.now();save();D.reopen?openLot(D.reopen):render()}
+ else if(D.addone){dlg.close();opForm([D.addone])}
+ else if(D.edit)editOps(D.edit.split(','),D.reopen?()=>openLot(D.reopen):null);
+ else if(D.done){const o=S.ops.find(x=>x.id==D.done);done(o);save();D.reopen?openLot(D.reopen):render()}
+ else if(D.undo){const o=S.ops.find(x=>x.id==D.undo);o.statut='a_faire';delete o.faitLe;o.maj=Date.now();save();render()}
+ else if(D.undoGrp){S.ops.filter(o=>o.grp==D.undoGrp&&o.statut=='fait').forEach(o=>{o.statut='a_faire';delete o.faitLe;o.maj=Date.now()});save();render()}
+ else if(D.doneGrp){S.ops.filter(o=>o.grp==D.doneGrp&&o.statut=='a_faire').forEach(done);save();render()}
+ else if(D.del){if(confirm('Supprimer cette opération ?')){S.del[D.del]=Date.now();S.ops=S.ops.filter(x=>x.id!=D.del);save();D.reopen?openLot(D.reopen):render()}}
+ else if(D.ren){const t=S.types.find(x=>x.id==D.ren),n=prompt('Nouveau nom',t.nom);if(n){t.nom=n.trim();t.maj=Date.now();save();render()}}
+ else if(D.tog){const t=S.types.find(x=>x.id==D.tog);t.actif=!t.actif;t.maj=Date.now();save();render()}
+ else if(D.a=='selall'){filtered().forEach(l=>SEL.add(l.id));render()}
+ else if(D.a=='clear'){SEL.clear();render()}
+ else if(D.a=='modele')dl('modele-operations.csv','\ufeffDate;Type;Parcelle;Rang début;Rang fin;Variété;Fait par;Note\n15/03/2026;Taille;BE;221;222;;Florian;Exemple','text/csv');
+ else if(D.a=='newop')opForm([...SEL]);
+ else if(D.a=='addtype'){const n=$('#nt').value.trim();if(n){S.types.push({id:uid(),nom:n,actif:true,maj:Date.now()});save();render()}}
+ else if(D.a=='expjson')dl('production-'+today()+'.json',JSON.stringify(S),'application/json');
+ else if(D.a=='expcsv')dl('historique-'+today()+'.csv','Date;Statut;Type;Variete;Parcelle;Rang;Par;Note\n'+S.ops.map(o=>{const l=lotById(o.lot)||{};return [o.date,o.statut,tn(o.type),l.variete,l.parcelle,l.rang+(l.rangMax>l.rang?'-'+l.rangMax:''),o.par,(o.rangs?'rangs '+o.rangs+' ':'')+(o.note||'').replace(/[;\n]/g,' ')].join(';')}).join('\n'),'text/csv');});
+document.addEventListener('change',async e=>{const t=e.target;
+ if(t.dataset.sel){t.checked?SEL.add(t.dataset.sel):SEL.delete(t.dataset.sel);rLots()}
+ else if(t.id=='fp'||t.id=='ft'||t.id=='ff'||t.id=='fg'){F[{fp:'p',ft:'t',ff:'f',fg:'g'}[t.id]]=t.value;rLots()}
+ else if(t.id=='pp'||t.id=='pm'||t.id=='pt'){if(t.id=='pp'){PP=t.value;PS.clear();PF=null}else if(t.id=='pm')PM=t.value;else PT=t.value;render()}
+ else if(t.id=='fty'){FT=t.value;render()}
+ else if(t.id=='usr'){S.user=t.value.trim();save()}
+ else if(t.id=='fx'){if(!window.XLSX)return alert('Bibliothèque Excel indisponible (hors ligne). Utilisez la version déjà chargée ou revenez en ligne.');
+  const wb=await readWb(t.files[0]),r=buildLots(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:null}));
+  if(!r.lots.length)return alert('Aucun lot reconnu.');if(confirm(r.lots.length+' lots trouvés. Remplacer les lots actuels ?')){replaceLots(r);save();V='lots';render()}}
+ else if(t.id=='fo'){if(!window.XLSX)return alert('Bibliothèque Excel indisponible (hors ligne).');const wb=await readWb(t.files[0]);importOps(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:null}));t.value=''}
+ else if(t.id=='fj'){const j=JSON.parse(await t.files[0].text());mergeData(j);save();render();alert('Fusion terminée.')}});
+document.addEventListener('input',e=>{if(e.target.id=='q'){F.q=e.target.value;const p=e.target.selectionStart;rLots();const q=$('#q');q.focus();q.setSelectionRange(p,p)}});
+render();
+if(GH().token)setTimeout(ghSync,800);addEventListener('online',()=>GH().token&&ghSync());
+</script></body></html>
