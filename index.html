@@ -50,15 +50,16 @@ const save=()=>{try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}if(!busy
 const tn=id=>(S.types.find(t=>t.id==id)||{nom:'(supprimé)'}).nom;
 const PRS=[[1,'Haute'],[2,'Normale'],[3,'Basse']],prOpts=PRS.map(([v,n])=>`<option value="${v}" ${v==2?'selected':''}>${n}</option>`).join('');
 const odate=o=>o.statut=='fait'?fmtD(o.faitLe||o.date):(o.date?fmtD(o.date):'sans échéance');
-const prLbl=o=>o.statut=='a_faire'&&o.prio==1?' · Haute':o.statut=='a_faire'&&o.prio==3?' · Basse':'';
+const prLbl=o=>(o.statut=='a_faire'&&o.prio==1?' · Haute':o.statut=='a_faire'&&o.prio==3?' · Basse':'')+(o.statut=='a_faire'&&o.pct?' · '+o.pct+' % fait':'');
+const bar=p=>p?`<div style="height:6px;border-radius:3px;background:var(--line);margin-top:6px"><div style="width:${p}%;height:100%;border-radius:3px;background:var(--ac)"></div></div>`:'';
 function syncOp(){const f=$('#os').value=='fait',d=$('#od');$('#odl').textContent=f?'Date de réalisation':'Échéance (facultative)';$('#pw').hidden=f;
  if(f&&!d.value){d.value=today();d.dataset.auto=1}else if(!f&&d.dataset.auto){d.value='';delete d.dataset.auto}}
 const opDate=()=>$('#od').value||($('#os').value=='fait'?today():'');
-function editOps(ids,post){const os=S.ops.filter(o=>ids.includes(o.id));if(!os.length)return;const td=os[0].statut=='a_faire',d0=td?os[0].date:(os[0].faitLe||os[0].date),p0=os[0].prio||2;$('#dlg').oninput=null;
- $('#dlg').innerHTML=`<h2>Modifier · ${os.length} lot${os.length>1?'s':''}</h2><label>${td?'Échéance (vide = aucune)':'Date de réalisation'}</label><input type="date" id="ed" value="${esc(d0)}">${td?`<label>Priorité</label><select id="ep">${prOpts}</select>`:''}
+function editOps(ids,post){const os=S.ops.filter(o=>ids.includes(o.id));if(!os.length)return;const td=os[0].statut=='a_faire',d0=td?os[0].date:(os[0].faitLe||os[0].date),p0=os[0].prio||2,c0=os[0].pct||0;$('#dlg').oninput=null;
+ $('#dlg').innerHTML=`<h2>Modifier · ${os.length} lot${os.length>1?'s':''}</h2><label>${td?'Échéance (vide = aucune)':'Date de réalisation'}</label><input type="date" id="ed" value="${esc(d0)}">${td?`<label>Priorité</label><select id="ep">${prOpts}</select><label>Avancement : <span id="epv">${c0}</span> %</label><input type="range" id="ec" min="0" max="100" step="5" value="${c0}" oninput="$('#epv').textContent=this.value" style="width:100%"><div class="mut">La tâche reste dans « À faire » tant que vous ne la marquez pas « Fait ».</div>`:''}
  <div class="row" style="margin-top:12px"><button class="btn" onclick="dlg.close()">Annuler</button><button class="btn p" id="esave">Enregistrer</button></div>`;
  if(td)$('#ep').value=p0;$('#dlg').showModal();
- $('#esave').onclick=()=>{const v=$('#ed').value,p=td?+$('#ep').value:0;os.forEach(o=>{o.maj=Date.now();if(td){if(v!==d0)o.date=v;if(p!==p0)o.prio=p}else if(v&&v!==d0){o.faitLe=v;o.date=v}});save();dlg.close();render();post&&post()}}
+ $('#esave').onclick=()=>{const v=$('#ed').value,p=td?+$('#ep').value:0,c=td?+$('#ec').value:0;os.forEach(o=>{o.maj=Date.now();if(td){if(v!==d0)o.date=v;if(p!==p0)o.prio=p;if(c!==c0)o.pct=c}else if(v&&v!==d0){o.faitLe=v;o.date=v}});save();dlg.close();render();post&&post()}}
 const lotById=id=>S.lots.find(l=>l.id==id);
 const qty=l=>Object.values(l.tailles).reduce((a,b)=>a+b,0);
 const fmtD=d=>d?d.split('-').reverse().join('/'):'';
@@ -137,13 +138,13 @@ function rLots(){const L=filtered(),uniq=k=>[...new Set(S.lots.map(l=>l[k]))].so
 let FT='';
 function rOps(st){$('#fab').hidden=true;const td=st=='a_faire',g={},dt=o=>td?o.date:(o.faitLe||o.date);
  S.ops.filter(o=>o.statut==st&&(!FT||o.type==FT)).forEach(o=>(g[o.grp]=g[o.grp]||[]).push(o));
- const gd=a=>td?(a.map(o=>o.date).filter(Boolean).sort()[0]||''):dt(a[0]),gp=a=>Math.min(...a.map(o=>o.prio||2));
+ const gd=a=>td?(a.map(o=>o.date).filter(Boolean).sort()[0]||''):dt(a[0]),gp=a=>Math.min(...a.map(o=>o.prio||2)),gc=a=>Math.round(a.reduce((s,o)=>s+(o.pct||0),0)/a.length);
  const gs=Object.values(g).sort((a,b)=>td?(gp(a)-gp(b))||(gd(a)&&gd(b)?gd(a).localeCompare(gd(b)):gd(a)?-1:gd(b)?1:0):gd(b).localeCompare(gd(a)));
  const rl=o=>o.rangs?' · rang'+(o.rangs.includes('–')?'s ':' ')+o.rangs:'';
  $('#app').innerHTML=`<h2>${td?'À faire':'Opérations effectuées'}</h2><div class="bar"><select id="fty"><option value="">Tous les types</option>${S.types.map(t=>`<option value="${t.id}" ${t.id==FT?'selected':''}>${esc(t.nom)}</option>`).join('')}</select></div>`+
- (gs.length?gs.map(a=>{const o=a[0],d=gd(a),late=td&&d&&d<today(),p=gp(a);return `<div class="card"><div class="row"><div><b>${esc(tn(o.type))}</b> ${td&&p!=2?`<span class="chip ${p==1?'w':''}">${p==1?'Haute':'Basse'}</span>`:''}· <span style="${late?'color:var(--warn);font-weight:600':''}">${d?fmtD(d):'Sans échéance'}${late?' (en retard)':''}</span><div class="mut">${a.length} lot${a.length>1?'s':''}${rl(o)}${td?'':o.par?' · '+esc(o.par):''}${o.note?' · '+esc(o.note):''}</div></div>
- <span><button class="btn s" data-edit="${a.map(x=>x.id).join(',')}">Modifier</button> ${td?`<button class="btn s" data-done-grp="${o.grp}">Tout fait</button>`:`<button class="btn s" data-undo-grp="${o.grp}">Remettre à faire</button>`}</span></div>
- <details><summary class="mut">Voir les lots</summary>${a.map(x=>{const l=lotById(x.lot)||{};return `<div class="row" style="padding:6px 0"><span>${esc(l.variete)} <span class="mut">${esc(l.parcelle)} · ${l.rang?rg(l):''}${' · '+(td?(x.date?fmtD(x.date):'sans échéance')+prLbl(x):fmtD(dt(x)))}</span></span><span><button class="btn s" data-edit="${x.id}">Modifier</button> ${td?`<button class="btn s" data-done="${x.id}">Fait</button>`:`<button class="btn s" data-undo="${x.id}">Annuler</button>`}</span></div>`}).join('')}</details></div>`}).join(''):`<div class="card mut">${td?'Rien à faire pour le moment.':'Aucune opération effectuée.'}</div>`);}
+ (gs.length?gs.map(a=>{const o=a[0],d=gd(a),late=td&&d&&d<today(),p=gp(a),pc=td?gc(a):0;return `<div class="card"><div class="row"><div><b>${esc(tn(o.type))}</b> ${td&&p!=2?`<span class="chip ${p==1?'w':''}">${p==1?'Haute':'Basse'}</span>`:''}· <span style="${late?'color:var(--warn);font-weight:600':''}">${d?fmtD(d):'Sans échéance'}${late?' (en retard)':''}</span><div class="mut">${a.length} lot${a.length>1?'s':''}${pc?' · '+pc+' % fait'+(a.length>1?' (moyenne)':''):''}${rl(o)}${td?'':o.par?' · '+esc(o.par):''}${o.note?' · '+esc(o.note):''}</div></div>
+ <span><button class="btn s" data-edit="${a.map(x=>x.id).join(',')}">Modifier</button> ${td?`<button class="btn s" data-del="${a.map(x=>x.id).join(',')}">Supprimer</button> `:''}${td?`<button class="btn s" data-done-grp="${o.grp}">Tout fait</button>`:`<button class="btn s" data-undo-grp="${o.grp}">Remettre à faire</button>`}</span></div>
+ ${bar(pc)}<details><summary class="mut">Voir les lots</summary>${a.map(x=>{const l=lotById(x.lot)||{};return `<div class="row" style="padding:6px 0"><span>${esc(l.variete)} <span class="mut">${esc(l.parcelle)} · ${l.rang?rg(l):''}${' · '+(td?(x.date?fmtD(x.date):'sans échéance')+prLbl(x):fmtD(dt(x)))}</span></span><span><button class="btn s" data-edit="${x.id}">Modifier</button> ${td?`<button class="btn s" data-del="${x.id}">×</button> <button class="btn s" data-done="${x.id}">Fait</button>`:`<button class="btn s" data-undo="${x.id}">Annuler</button>`}</span></div>`}).join('')}</details></div>`}).join(''):`<div class="card mut">${td?'Rien à faire pour le moment.':'Aucune opération effectuée.'}</div>`);}
 let PP='',PM='qty',PT='',PS=new Set(),PF=null;
 const hue=s=>{let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))%360;return h};
 const rngOf=o=>{if(!o.rangs)return null;const m=o.rangs.split('–');return[+m[0],+m[m.length-1]]};
@@ -211,7 +212,7 @@ const opFields=()=>`<label>Type</label><select id="ot">${S.types.filter(t=>t.act
 function addOps(ids,rangs){const grp=uid();ids.forEach(l=>S.ops.push({id:uid(),grp,lot:l,type:$('#ot').value,date:opDate(),prio:+$('#opr').value,statut:$('#os').value,note:$('#on').value,par:S.user,rangs:rangs||'',cree:Date.now(),maj:Date.now()}));
  SEL.clear();save();dlg.close();render()}
 function opForm(ids){$('#dlg').oninput=null;$('#dlg').innerHTML=`<h2>Nouvelle opération · ${ids.length} lot${ids.length>1?'s':''}</h2>`+opFields();$('#dlg').showModal();$('#osave').onclick=()=>addOps(ids)}
-function done(o){o.statut='fait';o.faitLe=today();o.par=S.user||o.par;o.maj=Date.now()}
+function done(o){o.statut='fait';o.faitLe=today();o.par=S.user||o.par;o.maj=Date.now();delete o.pct}
 document.addEventListener('click',e=>{const d=e.target.closest('[data-v],[data-a],[data-open],[data-done],[data-done-grp],[data-undo],[data-undo-grp],[data-rang],[data-rmtag],[data-tagone],[data-edit],[data-del],[data-ren],[data-tog],[data-addone]');if(!d)return;const D=d.dataset;
  if(D.v){V=D.v;render()}
  else if(D.open)openLot(D.open);
@@ -233,7 +234,7 @@ document.addEventListener('click',e=>{const d=e.target.closest('[data-v],[data-a
  else if(D.undo){const o=S.ops.find(x=>x.id==D.undo);o.statut='a_faire';delete o.faitLe;o.maj=Date.now();save();render()}
  else if(D.undoGrp){S.ops.filter(o=>o.grp==D.undoGrp&&o.statut=='fait').forEach(o=>{o.statut='a_faire';delete o.faitLe;o.maj=Date.now()});save();render()}
  else if(D.doneGrp){S.ops.filter(o=>o.grp==D.doneGrp&&o.statut=='a_faire').forEach(done);save();render()}
- else if(D.del){if(confirm('Supprimer cette opération ?')){S.del[D.del]=Date.now();S.ops=S.ops.filter(x=>x.id!=D.del);save();D.reopen?openLot(D.reopen):render()}}
+ else if(D.del){const ids=D.del.split(',');if(confirm(ids.length>1?'Supprimer cette tâche sur ses '+ids.length+' lots ?':'Supprimer cette opération ?')){ids.forEach(i=>S.del[i]=Date.now());S.ops=S.ops.filter(x=>!ids.includes(x.id));save();D.reopen?openLot(D.reopen):render()}}
  else if(D.ren){const t=S.types.find(x=>x.id==D.ren),n=prompt('Nouveau nom',t.nom);if(n){t.nom=n.trim();t.maj=Date.now();save();render()}}
  else if(D.tog){const t=S.types.find(x=>x.id==D.tog);t.actif=!t.actif;t.maj=Date.now();save();render()}
  else if(D.a=='selall'){filtered().forEach(l=>SEL.add(l.id));render()}
