@@ -22,7 +22,7 @@ input,select,textarea{padding:10px;border:1px solid var(--line);border-radius:8p
 dialog{border:0;border-radius:14px;padding:16px;width:min(560px,94vw);background:var(--card);color:var(--ink)}
 dialog::backdrop{background:#0008}dialog label{display:block;margin:10px 0 3px;font-weight:600}
 dialog input,dialog select,dialog textarea{width:100%}
-.row{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}.com{font-size:14px;margin-top:4px;padding:4px 8px;border-left:3px solid var(--ac);background:var(--ac2);border-radius:0 6px 6px 0;white-space:pre-wrap}
 h2{margin:6px 0 10px;font-size:20px}details summary{cursor:pointer}
 .grid{display:flex;flex-direction:column;gap:6px;margin:8px 0}
 .cell{min-height:46px;border-radius:8px;display:flex;align-items:center;gap:12px;padding:0 12px;color:#1d2a22;border:2px solid transparent;cursor:pointer}
@@ -60,6 +60,19 @@ function editOps(ids,post){const os=S.ops.filter(o=>ids.includes(o.id));if(!os.l
  <div class="row" style="margin-top:12px"><button class="btn" onclick="dlg.close()">Annuler</button><button class="btn p" id="esave">Enregistrer</button></div>`;
  if(td)$('#ep').value=p0;$('#dlg').showModal();
  $('#esave').onclick=()=>{const v=$('#ed').value,p=td?+$('#ep').value:0,c=td?+$('#ec').value:0;os.forEach(o=>{o.maj=Date.now();if(td){if(v!==d0)o.date=v;if(p!==p0)o.prio=p;if(c!==c0)o.pct=c}else if(v&&v!==d0){o.faitLe=v;o.date=v}});save();dlg.close();render();post&&post()}}
+const fmtT=t=>new Date(t).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});
+const uniqComs=os=>{const m=new Map();os.forEach(o=>(o.coms||[]).forEach(k=>m.set(k.id,k)));return[...m.values()].sort((a,b)=>a.t-b.t)};
+const comsHtml=os=>uniqComs(os).map(k=>`<div class="com">${esc(k.txt)} <span class="mut">— ${esc(k.par||'?')}, ${fmtT(k.t)}</span></div>`).join('');
+const comBtn=(os,re)=>{const n=uniqComs(os).length;return `<button class="btn s" data-com="${os.map(x=>x.id).join(',')}" ${re?`data-reopen="${esc(re)}"`:''}>💬${n?' '+n:''}</button>`};
+function comForm(ids,post){const os=S.ops.filter(o=>ids.includes(o.id));if(!os.length)return;$('#dlg').oninput=null;
+ const list=()=>uniqComs(os).map(k=>`<div class="com row"><span>${esc(k.txt)} <span class="mut">— ${esc(k.par||'?')}, ${fmtT(k.t)}</span></span><button class="btn s" data-cdel="${k.id}">×</button></div>`).join('')||'<p class="mut">Aucun commentaire.</p>';
+ $('#dlg').innerHTML=`<h2>Commentaires · ${esc(tn(os[0].type))}${os.length>1?' · '+os.length+' lots':''}</h2><div id="cl">${list()}</div><label>Nouveau commentaire</label><textarea id="ctx" rows="3" placeholder="ex : manque de plants, reprendre lundi"></textarea>
+ <div class="row" style="margin-top:12px"><button class="btn" id="cclose">Fermer</button><button class="btn p" id="csave">Ajouter</button></div>`;$('#dlg').showModal();
+ $('#dlg').onclose=()=>{$('#dlg').onclose=null;render();post&&post()};
+ $('#cclose').onclick=()=>dlg.close();
+ $('#csave').onclick=()=>{const v=$('#ctx').value.trim();if(!v)return;const k={id:uid(),t:Date.now(),par:S.user,txt:v};os.forEach(o=>{(o.coms=o.coms||[]).push(k);o.maj=Date.now()});save();$('#ctx').value='';$('#cl').innerHTML=list();bindDel()};
+ const bindDel=()=>document.querySelectorAll('[data-cdel]').forEach(b=>b.onclick=()=>{S.del[b.dataset.cdel]=Date.now();os.forEach(o=>{o.coms=(o.coms||[]).filter(k=>k.id!=b.dataset.cdel);o.maj=Date.now()});save();$('#cl').innerHTML=list();bindDel()});
+ bindDel()}
 const lotById=id=>S.lots.find(l=>l.id==id);
 const qty=l=>Object.values(l.tailles).reduce((a,b)=>a+b,0);
 const fmtD=d=>d?d.split('-').reverse().join('/'):'';
@@ -99,7 +112,8 @@ function setMsg(m){SM=m;toast(m);if(V=='data')render()}
 function mergeData(R){
  if(R.lots&&((R.lotsMaj||0)>(S.lotsMaj||0)||(!S.lots.length&&R.lots.length))){S.lots=R.lots;S.sizes=R.sizes||S.sizes;S.lotsMaj=R.lotsMaj||0}
  S.del=Object.assign({},R.del,S.del);
- const m=new Map();[...S.ops,...(R.ops||[])].forEach(o=>{const c=m.get(o.id);if(!c||mj(o)>mj(c))m.set(o.id,o)});S.ops=[...m.values()].filter(o=>!S.del[o.id]);
+ const m=new Map(),cm=new Map();[...S.ops,...(R.ops||[])].forEach(o=>{const c=m.get(o.id);(o.coms||[]).forEach(k=>{const a=cm.get(o.id)||new Map();a.set(k.id,k);cm.set(o.id,a)});if(!c||mj(o)>mj(c))m.set(o.id,o)});
+ S.ops=[...m.values()].filter(o=>!S.del[o.id]).map(o=>{const a=cm.get(o.id);if(!a)return o;const l=[...a.values()].filter(k=>!S.del[k.id]).sort((x,y)=>x.t-y.t);return l.length?{...o,coms:l}:(()=>{const{coms,...r}=o;return r})()});
  const tt=new Map();[...S.types,...(R.types||[])].forEach(x=>{const c=tt.get(x.id);if(!c||(x.maj||0)>(c.maj||0))tt.set(x.id,x)});S.types=[...tt.values()];
  const ru=R.utags||{},rm=R.um||{};Object.keys(ru).forEach(k=>{if(!(k in S.utags)||(rm[k]||0)>(S.um[k]||0)){S.utags[k]=ru[k];S.um[k]=rm[k]||0}})}
 async function ghSync(){if(busy)return;const c=GH();if(!c.token||!c.repo)return setMsg("Renseignez d'abord le dépôt et le jeton.");
@@ -143,8 +157,8 @@ function rOps(st){$('#fab').hidden=true;const td=st=='a_faire',g={},dt=o=>td?o.d
  const rl=o=>o.rangs?' · rang'+(o.rangs.includes('–')?'s ':' ')+o.rangs:'';
  $('#app').innerHTML=`<h2>${td?'À faire':'Opérations effectuées'}</h2><div class="bar"><select id="fty"><option value="">Tous les types</option>${S.types.map(t=>`<option value="${t.id}" ${t.id==FT?'selected':''}>${esc(t.nom)}</option>`).join('')}</select></div>`+
  (gs.length?gs.map(a=>{const o=a[0],d=gd(a),late=td&&d&&d<today(),p=gp(a),pc=td?gc(a):0;return `<div class="card"><div class="row"><div><b>${esc(tn(o.type))}</b> ${td&&p!=2?`<span class="chip ${p==1?'w':''}">${p==1?'Haute':'Basse'}</span>`:''}· <span style="${late?'color:var(--warn);font-weight:600':''}">${d?fmtD(d):'Sans échéance'}${late?' (en retard)':''}</span><div class="mut">${a.length} lot${a.length>1?'s':''}${pc?' · '+pc+' % fait'+(a.length>1?' (moyenne)':''):''}${rl(o)}${td?'':o.par?' · '+esc(o.par):''}${o.note?' · '+esc(o.note):''}</div></div>
- <span><button class="btn s" data-edit="${a.map(x=>x.id).join(',')}">Modifier</button> ${td?`<button class="btn s" data-del="${a.map(x=>x.id).join(',')}">Supprimer</button> `:''}${td?`<button class="btn s" data-done-grp="${o.grp}">Tout fait</button>`:`<button class="btn s" data-undo-grp="${o.grp}">Remettre à faire</button>`}</span></div>
- ${bar(pc)}<details><summary class="mut">Voir les lots</summary>${a.map(x=>{const l=lotById(x.lot)||{};return `<div class="row" style="padding:6px 0"><span>${esc(l.variete)} <span class="mut">${esc(l.parcelle)} · ${l.rang?rg(l):''}${' · '+(td?(x.date?fmtD(x.date):'sans échéance')+prLbl(x):fmtD(dt(x)))}</span></span><span><button class="btn s" data-edit="${x.id}">Modifier</button> ${td?`<button class="btn s" data-del="${x.id}">×</button> <button class="btn s" data-done="${x.id}">Fait</button>`:`<button class="btn s" data-undo="${x.id}">Annuler</button>`}</span></div>`}).join('')}</details></div>`}).join(''):`<div class="card mut">${td?'Rien à faire pour le moment.':'Aucune opération effectuée.'}</div>`);}
+ <span><button class="btn s" data-edit="${a.map(x=>x.id).join(',')}">Modifier</button> ${comBtn(a)} ${td?`<button class="btn s" data-del="${a.map(x=>x.id).join(',')}">Supprimer</button> `:''}${td?`<button class="btn s" data-done-grp="${o.grp}">Tout fait</button>`:`<button class="btn s" data-undo-grp="${o.grp}">Remettre à faire</button>`}</span></div>
+ ${bar(pc)}${comsHtml(a)}<details><summary class="mut">Voir les lots</summary>${a.map(x=>{const l=lotById(x.lot)||{};return `<div class="row" style="padding:6px 0"><span>${esc(l.variete)} <span class="mut">${esc(l.parcelle)} · ${l.rang?rg(l):''}${' · '+(td?(x.date?fmtD(x.date):'sans échéance')+prLbl(x):fmtD(dt(x)))}</span></span><span><button class="btn s" data-edit="${x.id}">Modifier</button> ${comBtn([x])} ${td?`<button class="btn s" data-del="${x.id}">×</button> <button class="btn s" data-done="${x.id}">Fait</button>`:`<button class="btn s" data-undo="${x.id}">Annuler</button>`}</span></div>`}).join('')}</details></div>`}).join(''):`<div class="card mut">${td?'Rien à faire pour le moment.':'Aucune opération effectuée.'}</div>`);}
 let PP='',PM='qty',PT='',PS=new Set(),PF=null;
 const hue=s=>{let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))%360;return h};
 const rngOf=o=>{if(!o.rangs)return null;const m=o.rangs.split('–');return[+m[0],+m[m.length-1]]};
@@ -161,7 +175,7 @@ function rPlan(){const ps=[...new Set(S.lots.map(l=>l.parcelle))].sort();if(!ps.
   return `<div class="cell ${PS.has(r)?'sel':''} ${PF===r?'foc':''} ${ls.every(l=>l.ph)?'ph':''}" data-rang="${r}" style="background:${bg}"><b class="rn">${r}</b><span class="nm">${ls.map(l=>esc(l.variete)).join(' · ')}</span>${tg.map(x=>`<span class="chip" style="margin:0">#${esc(x)}</span>`).join('')}${ty?`<span class="ty">${esc(ty)}</span>`:''}</div>`};
  let info='';if(PF!=null){const ls=lotsAt(PP,PF),os=opsAt(PP,PF).sort((a,b)=>(b.faitLe||b.date).localeCompare(a.faitLe||a.date));
   info=`<div class="card"><div class="row"><span><b>${esc(PP)} · rang ${PF}</b> · ${rangQ(PP,PF)} plants</span><button class="btn s" data-a="pclose">Fermer</button></div><div>${uchips('R|'+PP+'|'+PF)}<button class="btn s" data-tagone="${esc('R|'+PP+'|'+PF)}">+ Tag rang</button></div>${ls.length?'':'<div class="mut">Rang vide : seuls les tags sont possibles.</div>'}${ls.map(l=>`<div class="mut">${esc(l.variete)} ${esc(l.forme)} · ${rg(l)} · ${l.ph?'non détaillé':qty(l)+' plants'}</div>`).join('')}
-  <h3>Opérations</h3>${os.length?os.map(o=>`<div class="row" style="padding:5px 0;border-top:1px solid var(--line)"><span>${o.statut=='fait'?'✓':'○'} <b>${esc(tn(o.type))}</b> ${odate(o)}${prLbl(o)}<div class="mut">${esc((lotById(o.lot)||{}).variete)} ${esc(o.note||'')}</div></span><span><button class="btn s" data-edit="${o.id}">Modifier</button> ${o.statut=='a_faire'?`<button class="btn s" data-done="${o.id}">Fait</button>`:''}</span></div>`).join(''):'<p class="mut">Aucune opération.</p>'}</div>`}
+  <h3>Opérations</h3>${os.length?os.map(o=>`<div class="row" style="padding:5px 0;border-top:1px solid var(--line)"><span>${o.statut=='fait'?'✓':'○'} <b>${esc(tn(o.type))}</b> ${odate(o)}${prLbl(o)}<div class="mut">${esc((lotById(o.lot)||{}).variete)} ${esc(o.note||'')}${comsHtml([o])}</div></span><span><button class="btn s" data-edit="${o.id}">Modifier</button> ${comBtn([o])} ${o.statut=='a_faire'?`<button class="btn s" data-done="${o.id}">Fait</button>`:''}</span></div>`).join(''):'<p class="mut">Aucune opération.</p>'}</div>`}
  $('#app').innerHTML=`<div class="bar"><select id="pp">${opts(ps,PP)}</select><select id="pm"><option value="qty" ${PM=='qty'?'selected':''}>Couleur : nb de plants</option><option value="var" ${PM=='var'?'selected':''}>Couleur : variétés</option><option value="todo" ${PM=='todo'?'selected':''}>Couleur : à faire</option><option value="fait" ${PM=='fait'?'selected':''}>Couleur : fait</option></select>
  <select id="pt"><option value="">Tous types</option>${S.types.map(x=>`<option value="${x.id}" ${x.id==PT?'selected':''}>${esc(x.nom)}</option>`).join('')}</select><button class="btn s" data-a="newpar">+ Parcelle</button>${pl.length&&pl.every(l=>l.ph)?'<button class="btn s" data-a="delpar">Supprimer</button>':''}</div>
  <div class="mut">${rs.filter(r=>lotsAt(PP,r).length).length} rangs non vides sur ${rs.length} · touchez un rang pour le sélectionner et voir son détail. Plus la couleur est foncée, plus le rang compte de plants (max ${QM}). Rangs vides grisés, rangs pointillés : non détaillés.</div><div class="grid">${rs.map(cell).join('')}</div>`;
@@ -204,7 +218,7 @@ function dl(name,txt,type){const a=document.createElement('a');a.href=URL.create
 function openLot(id){const l=lotById(id),o=S.ops.filter(x=>x.lot==id).sort((a,b)=>b.date.localeCompare(a.date));
  $('#dlg').innerHTML=`<h2>${esc(l.variete)}</h2><div class="mut">${esc(l.parcelle)} · ${rg(l)} ${esc(l.forme)}</div>
  <div>${S.sizes.filter(s=>l.tailles[s]).map(s=>`<span class="chip">${s} × ${l.tailles[s]}</span>`).join('')}${l.tags.map(t=>`<span class="chip w">${esc(t)}</span>`).join('')}${uchips('L|'+id,id)}<button class="btn s" data-tagone="${esc('L|'+id)}" data-reopen="${esc(id)}">+ Tag</button></div>${l.com?`<p>${esc(l.com)}</p>`:''}
- <h3>Historique</h3>${o.length?o.map(x=>`<div class="row" style="padding:5px 0;border-top:1px solid var(--line)"><span>${x.statut=='fait'?'✓':'○'} <b>${esc(tn(x.type))}</b> ${odate(x)}${prLbl(x)}<div class="mut">${esc(x.par||'')} ${x.rangs?'· rang'+(x.rangs.includes('–')?'s ':' ')+x.rangs+' ':''}${esc(x.note||'')}</div></span><span><button class="btn s" data-edit="${x.id}" data-reopen="${esc(id)}">Modifier</button> ${x.statut=='a_faire'?`<button class="btn s" data-done="${x.id}" data-reopen="${id}">Fait</button> `:''}<button class="btn s" data-del="${x.id}" data-reopen="${id}">×</button></span></div>`).join(''):'<p class="mut">Aucune opération.</p>'}
+ <h3>Historique</h3>${o.length?o.map(x=>`<div class="row" style="padding:5px 0;border-top:1px solid var(--line)"><span>${x.statut=='fait'?'✓':'○'} <b>${esc(tn(x.type))}</b> ${odate(x)}${prLbl(x)}<div class="mut">${esc(x.par||'')} ${x.rangs?'· rang'+(x.rangs.includes('–')?'s ':' ')+x.rangs+' ':''}${esc(x.note||'')}${comsHtml([x])}</div></span><span><button class="btn s" data-edit="${x.id}" data-reopen="${esc(id)}">Modifier</button> ${comBtn([x],id)} ${x.statut=='a_faire'?`<button class="btn s" data-done="${x.id}" data-reopen="${id}">Fait</button> `:''}<button class="btn s" data-del="${x.id}" data-reopen="${id}">×</button></span></div>`).join(''):'<p class="mut">Aucune opération.</p>'}
  <div class="row" style="margin-top:12px"><button class="btn" onclick="dlg.close()">Fermer</button><button class="btn p" data-addone="${esc(id)}">+ Opération</button></div>`;$('#dlg').showModal();}
 let lastT='';
 function newType(s){if(s.value!='__new'){lastT=s.value;return}const n=(prompt("Nom du nouveau type d'opération")||'').trim();
@@ -219,7 +233,7 @@ function addOps(ids,rangs){const grp=uid();ids.forEach(l=>S.ops.push({id:uid(),g
  SEL.clear();save();dlg.close();render()}
 function opForm(ids){$('#dlg').oninput=null;$('#dlg').innerHTML=`<h2>Nouvelle opération · ${ids.length} lot${ids.length>1?'s':''}</h2>`+opFields();$('#dlg').showModal();$('#osave').onclick=()=>addOps(ids)}
 function done(o){o.statut='fait';o.faitLe=today();o.par=S.user||o.par;o.maj=Date.now();delete o.pct}
-document.addEventListener('click',e=>{const d=e.target.closest('[data-v],[data-a],[data-open],[data-done],[data-done-grp],[data-undo],[data-undo-grp],[data-rang],[data-rmtag],[data-tagone],[data-edit],[data-del],[data-ren],[data-tog],[data-addone]');if(!d)return;const D=d.dataset;
+document.addEventListener('click',e=>{const d=e.target.closest('[data-v],[data-a],[data-open],[data-done],[data-done-grp],[data-undo],[data-undo-grp],[data-rang],[data-rmtag],[data-tagone],[data-edit],[data-com],[data-del],[data-ren],[data-tog],[data-addone]');if(!d)return;const D=d.dataset;
  if(D.v){V=D.v;render()}
  else if(D.open)openLot(D.open);
  else if(D.rang){const r=+D.rang;PS.has(r)?PS.delete(r):PS.add(r);PF=r;render()}
@@ -235,6 +249,7 @@ document.addEventListener('click',e=>{const d=e.target.closest('[data-v],[data-a
  else if(D.tagone)tagForm([D.tagone],null,D.reopen?()=>openLot(D.reopen):null);
  else if(D.rmtag){const a=S.utags[D.rmtag];a.splice(+D.ti,1);S.um[D.rmtag]=Date.now();save();D.reopen?openLot(D.reopen):render()}
  else if(D.addone){dlg.close();opForm([D.addone])}
+ else if(D.com)comForm(D.com.split(','),D.reopen?()=>openLot(D.reopen):null);
  else if(D.edit)editOps(D.edit.split(','),D.reopen?()=>openLot(D.reopen):null);
  else if(D.done){const o=S.ops.find(x=>x.id==D.done);done(o);save();D.reopen?openLot(D.reopen):render()}
  else if(D.undo){const o=S.ops.find(x=>x.id==D.undo);o.statut='a_faire';delete o.faitLe;o.maj=Date.now();save();render()}
